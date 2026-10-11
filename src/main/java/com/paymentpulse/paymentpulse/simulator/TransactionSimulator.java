@@ -83,7 +83,7 @@ public class TransactionSimulator {
 
         LocalDateTime end = LocalDateTime.now();
 
-        LocalDateTime start = end.minusHours(1);
+        LocalDateTime start = end.minusMinutes(70);
 
         long totalSeconds = java.time.Duration.between(start,end).getSeconds();
 
