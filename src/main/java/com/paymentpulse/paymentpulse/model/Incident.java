@@ -1,5 +1,6 @@
 package com.paymentpulse.paymentpulse.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -22,6 +23,8 @@ public class Incident {
     private String gatewayId;
     private double gatewayFailureRate;
     private String description;
+    @Column(nullable = false )
+    private int healthyEvaluations;
 
     public Incident(){
     }
@@ -115,5 +118,12 @@ public class Incident {
     }
     public void setResolvedAt(LocalDateTime resolvedAt){
         this.resolvedAt=resolvedAt;
+    }
+
+    public int getHealthyEvaluations() {
+        return healthyEvaluations;
+    }
+    public void setHealthyEvaluations(int healthyEvaluations){
+        this.healthyEvaluations=healthyEvaluations;
     }
 }

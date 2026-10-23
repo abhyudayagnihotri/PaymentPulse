@@ -1,6 +1,7 @@
 package com.paymentpulse.paymentpulse.controller;
 
 import com.paymentpulse.paymentpulse.model.Incident;
+import com.paymentpulse.paymentpulse.model.IncidentRcaEvidence;
 import com.paymentpulse.paymentpulse.service.IncidentService;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
@@ -28,5 +29,10 @@ public class IncidentController {
     @GetMapping
     public List<Incident> getAllIncidents(){
         return incidentService.getAllIncidents();
+    }
+
+    @GetMapping("/{incidentId}/rca-history")
+    public List<IncidentRcaEvidence> getRcaHistory(@PathVariable String incidentId){
+        return incidentService.getRcaHistory(incidentId);
     }
 }
