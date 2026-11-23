@@ -1,96 +1,102 @@
-# PaymentPulse — Distributed Payment Reliability & Observability Platform
+# PaymentPulse
+### Distributed Payment Reliability & Observability Platform
 
-PaymentPulse is a backend-focused payment reliability and observability platform built with Java, Spring Boot, and PostgreSQL. It monitors simulated payment transactions, detects reliability degradation, identifies suspicious gateway-bank combinations, and manages incidents through recovery.
+PaymentPulse is a backend-focused distributed payment reliability and observability platform designed to simulate payment transactions, process them through an event-driven architecture, and monitor payment system reliability.
 
-The project is being developed to explore distributed systems, event-driven architecture, observability, anomaly detection, and resilient payment processing.
+The project focuses on exploring distributed systems concepts such as asynchronous processing, Kafka-based event streaming, idempotent consumers, failure handling, transaction persistence, and payment reliability monitoring.
 
-## Current Status
+---
 
-**Implemented and tested**
+## 1. Project Overview
 
-- Transaction ingestion and simulation
-- PostgreSQL persistence using Spring Data JPA
-- Global and rolling-window payment metrics
-- Historical reliability baselines
-- Failure-rate and latency anomaly detection
-- Per-gateway reliability analysis
-- Automated incident creation and updates
-- Recovery tracking with three consecutive healthy evaluations
-- Gateway-bank failure correlation
-- Root-cause analysis (RCA) evidence and confidence levels
-- Persistent RCA snapshots and incident history
-- Automated unit tests using JUnit and Mockito
+Modern payment systems process thousands of transactions across multiple payment gateways, banks, merchants, and locations.
 
-**Planned**
+These systems must handle:
+- Payment failures and gateway degradation.
+- High transaction volumes.
+- Delayed or duplicated events.
+- Unreliable downstream services.
+- Transaction processing and monitoring.
 
-- Kafka-based event-driven transaction processing
-- Improved failure correlation and root-cause analysis
-- Prometheus and Grafana observability
-- Docker-based deployment
-- Load testing and performance benchmarking
-- Intelligent gateway routing and failover
+PaymentPulse simulates this environment and provides a foundation for analyzing payment reliability through a distributed backend architecture.
 
-## Architecture
+## 2. Architecture
 
-### Current implementation
+PaymentPulse currently uses an event-driven transaction ingestion pipeline.
 
 ```text
-Transaction Simulator / REST API
-              |
-              v
-     Transaction Processing
-              |
-              v
-          PostgreSQL
-              |
-              v
-       Metrics Service
-              |
-              v
-    Reliability Baselines
-              |
-              v
-    Anomaly Detection
-              |
-              v
-      Incident Engine
-              |
-              v
-   Gateway-Bank Correlation
-              |
-              v
-    RCA Evidence History
+                 Transaction Simulator
+                         |
+                         v
+                Transaction Producer
+                         |
+                         v
+                 Apache Kafka
+              payment-transactions
+                         |
+                         v
+                Kafka Consumer
+                         |
+                         v
+             Transaction Persistence
+                         |
+                 +-------+-------+
+                 |               |
+                 v               v
+          Processed Events   PostgreSQL
+          (Idempotency)     (Transactions)
 ```
 
-### Planned event-driven architecture
+### Event Failure Handling
 
 ```text
-Transaction API
-      |
-      v
-Kafka: payment-transactions
-      |
-      v
-Transaction Consumer
-      |
-      v
-PostgreSQL + Reliability Services
-      |
-      v
-Incident Detection + RCA
-      |
-      v
-Metrics and Observability
+             Kafka Consumer
+                    |
+                    v
+             Processing Error
+                    |
+                    v
+              Retry Mechanism
+                    |
+             +------+------+
+             |             |
+          Success        Failure
+             |             |
+             v             v
+          Continue      Dead Letter
+                        Topic (DLT)
 ```
 
-Kafka integration is planned and is not yet part of the current implementation.
+The dead-letter topic currently uses Kafka's default naming convention:
 
-## Key Features
+`payment-transactions-dlt`
 
-### 1. Transaction ingestion and simulation
+---
 
-The platform generates simulated payment transactions containing fields such as:
+## 3. Technology Stack
 
+| Component | Technology |
+|---|---|
+| Backend | Java 21 |
+| Framework | Spring Boot 4.1.1 |
+| Build Tool | Maven |
+| Messaging | Apache Kafka |
+| Database | PostgreSQL |
+| ORM | Spring Data JPA / Hibernate |
+| Event Serialization | Jackson JSON |
+| Testing | JUnit 5, Mockito |
+| Containerization | Docker |
+
+---
+
+## 4. Implemented Features
+
+### 4.1 Transaction Simulation
+
+A transaction simulator generates realistic payment transaction data.
+
+Each transaction contains:
+- Transaction ID
 - Merchant ID
 - Bank ID
 - Gateway ID
@@ -102,259 +108,435 @@ The platform generates simulated payment transactions containing fields such as:
 - Processing latency
 - Timestamp
 
-The simulator supports normal traffic and simulated gateway incidents to exercise the reliability engine.
+**Simulation characteristics:**
 
-### 2. Payment metrics
+- 90% successful transactions under normal conditions.
+- 10% failed transactions under normal conditions.
+- Random transaction amounts.
+- Multiple payment gateways and banks.
+- Multiple payment methods and locations.
+- Time-distributed transaction generation over a 70-minute window.
 
-The metrics service calculates:
+Supported payment methods:
+- CARD
+- UPI
+- NET_BANKING
 
-- Total transactions
-- Successful and failed transactions
-- Success and failure rates
-- Average latency
-- Gateway, bank, merchant, location, and payment-method breakdowns
-- Response-code distribution
+### 4.2 Gateway Incident Simulation
 
-Rolling-window metrics include:
+PaymentPulse can simulate gateway degradation.
 
-- Transaction throughput (TPS)
-- P50 latency
-- P95 latency
-- P99 latency
-- Window-specific success and failure rates
+The incident simulator:
+- Targets a specific gateway.
+- Generates a configurable number of transactions.
+- Increases the failure probability to 40%.
+- Introduces severe transaction latency.
+- Generates incident-related response codes.
 
-### 3. Reliability baselines
+This helps simulate real-world gateway reliability problems.
 
-The reliability baseline service compares current performance with historical windows.
+### 4.3 Event-Driven Transaction Processing
 
-It calculates baseline statistics for metrics such as:
+Transactions are published to Apache Kafka instead of being written directly to PostgreSQL by the simulator.
 
-- Failure rate
-- P95 latency
-- Throughput
-- Standard deviation
+The processing pipeline consists of:
 
-These baselines provide context for identifying unusual changes in payment performance.
+1. Transaction generation.
+2. Event creation.
+3. Kafka event publishing.
+4. Kafka event consumption.
+5. Transaction persistence.
 
-### 4. Anomaly detection
+Each event receives a unique UUID-based event ID.
 
-The anomaly detection service evaluates current payment performance against historical baselines.
+Kafka messages use the gateway ID as the message key, allowing transactions belonging to the same gateway to be routed to the same Kafka partition.
 
-It detects degradation associated with elevated failure rates and latency. Severity is assigned according to the configured anomaly rules.
+**Kafka topic:** `payment-transactions`
 
-### 5. Gateway reliability analysis
+**Partitions:** 3
 
-The gateway reliability service evaluates individual gateways using current-window metrics and historical baseline information.
+### 4.4 Idempotent Event Processing
 
-It identifies gateways showing suspicious failure-rate or latency behavior and provides candidate gateways for incident investigation.
+PaymentPulse implements event-level idempotency to prevent duplicate transaction persistence.
 
-### 6. Incident lifecycle management
+A separate `processed_events` table tracks processed event IDs.
 
-The incident engine supports:
+Before persisting a transaction, the persistence service attempts to claim its event ID using:
 
-- Incident creation when an anomaly is detected
-- Updates to an existing active incident
-- Severity and incident-type assignment
-- Suspected-gateway identification
-- Consecutive healthy-evaluation tracking
-- Automatic resolution after three consecutive healthy evaluations
-- Resolution timestamps and incident history
+```sql
+INSERT INTO processed_events (event_id, processed_at)
+VALUES (:eventId, :processedAt)
+ON CONFLICT (event_id) DO NOTHING;
+```
 
-If an anomaly returns during recovery, the consecutive healthy-evaluation counter resets.
+If the event ID has already been processed, the event is skipped.
 
-### 7. Gateway-bank correlation and RCA
+This protects the database against duplicate event delivery and processing attempts.
 
-PaymentPulse analyzes gateway-bank combinations within a rolling transaction window.
+### 4.5 Retry Mechanism
 
-It evaluates:
+Kafka consumer failures are handled through Spring Kafka's `DefaultErrorHandler`.
 
-- Number of transactions in each combination
-- Number of failures
-- Pair-level failure rate
-- Overall failure rate
-- Difference between pair and overall failure rates
-- Minimum sample-size requirements
+Current retry configuration:
 
-The system records a suspicious signal when the configured sample-size and failure-rate-gap thresholds are satisfied.
+```java
+FixedBackOff backOff = new FixedBackOff(1000L, 3L);
+```
 
-RCA confidence levels distinguish between stronger suspicious signals and less conclusive candidates. A correlation is not proof of causation.
+This provides:
+- One initial processing attempt.
+- Three additional retry attempts.
+- A one-second delay between retries.
 
-### 8. Persistent RCA history
+### 4.6 Dead Letter Topic (DLT)
 
-Each incident evaluation that enters the anomaly-handling path can save an RCA snapshot to PostgreSQL.
+Events that continue failing after the configured retries are published to a Dead Letter Topic.
 
-Snapshots preserve information such as:
+Current configuration:
+- Original topic: `payment-transactions`
+- Dead Letter Topic: `payment-transactions-dlt`
+- Retry attempts: 3
+- Retry interval: 1 second
 
-- Incident ID
-- Evaluation timestamp
-- Suspected gateway and bank
-- Pair and overall failure rates
-- Failure-rate gap
-- Transaction and failure counts
-- Confidence level
-- Evidence summary
+Dead-letter publishing has been tested successfully by deliberately introducing a processing failure.
 
-The RCA history endpoint returns snapshots in descending evaluation-time order.
+### 4.7 PostgreSQL Persistence
 
-## Technology Stack
+Processed transactions are stored in PostgreSQL using Spring Data JPA and Hibernate.
 
-| Component | Technology |
+The database currently includes:
+
+**transactions**
+- Stores transaction information.
+- Contains payment, gateway, merchant, bank, status, response code, latency, and timestamp fields.
+
+**processed_events**
+- Stores processed event IDs.
+- Maintains processing timestamps.
+- Enforces event ID uniqueness.
+
+---
+
+## 5. Reliability and Observability Features
+
+The project also includes an initial reliability monitoring and incident analysis foundation.
+
+Implemented components include:
+
+| Component | Responsibility |
 |---|---|
-| Language | Java 21 |
-| Backend framework | Spring Boot 4.1.1 |
-| REST API | Spring Web MVC |
-| Persistence | Spring Data JPA / Hibernate |
-| Database | PostgreSQL |
-| Build tool | Maven |
-| Unit testing | JUnit 6 and Mockito |
-| Planned event streaming | Apache Kafka |
-| Planned observability | Prometheus and Grafana |
-| Planned containerization | Docker |
+| MetricsService | Transaction metrics |
+| ReliabilityBaselineService | Historical reliability baselines |
+| AnomalyDetectionService | Detects unusual payment behavior |
+| GatewayReliabilityService | Gateway-level reliability analysis |
+| IncidentService | Incident evaluation and lifecycle |
+| FailureCorrelationService | Failure correlation and RCA evidence |
 
-## API Endpoints
+### Metrics
 
-The following endpoints are implemented in the current application.
+The platform includes transaction metrics such as:
+- Total transactions.
+- Successful transactions.
+- Failed transactions.
+- Success rate.
+- Failure rate.
+- Average latency.
+- TPS.
+- Latency percentiles.
 
-| Method | Endpoint | Purpose |
+### Anomaly Detection
+
+Historical baselines are used to evaluate payment system behavior and identify abnormal changes in failure rates and latency.
+
+### Gateway Reliability
+
+Payment gateway performance can be evaluated using historical transaction behavior.
+
+### Incident Management
+
+The incident engine supports incident evaluation, active incident retrieval, incident history, and RCA evidence.
+
+---
+
+## 6. API Endpoints
+
+The following endpoints are currently implemented.
+
+| Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/metrics` | Retrieve aggregate payment metrics |
-| GET | `/api/metrics/window?minutes=10` | Retrieve rolling-window metrics |
-| GET | `/api/metrics/anomaly?windowMinutes=10&windows=6` | Evaluate anomalies |
-| GET | `/api/gateways/reliability?windowMinutes=10&windows=6` | Analyze gateway reliability |
-| GET | `/api/reliability/correlation?windowMinutes=10` | Analyze gateway-bank correlations |
-| POST | `/api/incidents/evaluate?windowMinutes=10&windows=6` | Evaluate and update incident state |
-| GET | `/api/incidents/active` | Retrieve the active incident |
-| GET | `/api/incidents` | Retrieve incident history |
-| GET | `/api/incidents/{incidentId}/rca-history` | Retrieve RCA snapshots for an incident |
-| POST | `/api/simulator/generate?count=200` | Generate normal simulated transactions |
+| GET | `/api/metrics` | Overall transaction metrics |
+| GET | `/api/metrics/window?minutes=10` | Time-window metrics |
+| GET | `/api/metrics/anomaly?windowMinutes=10&windows=6` | Anomaly detection |
+| GET | `/api/gateways/reliability?windowMinutes=10&windows=6` | Gateway reliability |
+| GET | `/api/incidents/active` | Retrieve active incidents |
+| GET | `/api/incidents` | Retrieve incidents |
+| GET | `/api/incidents/{id}/rca-history` | Retrieve RCA history |
+| GET | `/api/reliability/correlation?windowMinutes=10` | Failure correlation |
+| GET | `/api/incidents/evaluate?windowMinutes=10&windows=6` | Evaluate incidents |
+| POST | `/api/simulator/generate?count=10` | Generate transactions |
 | POST | `/api/simulator/incident?gatewayId=G03&count=100` | Simulate gateway degradation |
+| POST | `/api/kafka/test` | Publish a test Kafka event |
 
-The endpoints use the application's configured port, which defaults to `8080` unless overridden.
+---
 
-## Prerequisites
+## 7. Project Structure
+
+```text
+com.paymentpulse.paymentpulse
+│
+├── config
+│   └── KafkaErrorHandlerConfig
+│
+├── controller
+│   ├── IncidentController
+│   ├── KafkaTestController
+│   ├── MetricsController
+│   └── TransactionController
+│
+├── event
+│   └── TransactionCreatedEvent
+│
+├── model
+│   ├── Incident
+│   ├── IncidentRcaEvidence
+│   ├── ProcessedEvent
+│   └── Transaction
+│
+├── repository
+│   ├── IncidentRcaEvidenceRepository
+│   ├── IncidentRepository
+│   ├── ProcessedEventRepository
+│   └── TransactionRepository
+│
+├── service
+│   ├── AnomalyDetectionService
+│   ├── FailureCorrelationService
+│   ├── GatewayReliabilityService
+│   ├── IncidentService
+│   ├── MetricsService
+│   ├── ReliabilityBaselineService
+│   ├── TransactionConsumerService
+│   ├── TransactionPersistenceService
+│   ├── TransactionProducerService
+│   └── TransactionService
+│
+├── simulator
+│   ├── SimulatorController
+│   └── TransactionSimulator
+│
+└── PaymentpulseApplication
+```
+
+---
+
+## 8. Running the Project Locally
+
+### Prerequisites
+
+Install the following:
 
 - JDK 21
-- IntelliJ IDEA or another Java IDE
+- Maven
 - PostgreSQL
-- Maven, or the Maven Wrapper included in the repository
+- Docker Desktop
 
-## Local Setup
-
-### 1. Clone the repository
+### Step 1: Clone the repository
 
 ```bash
 git clone <YOUR_REPOSITORY_URL>
 cd PaymentPulse
 ```
 
-Replace `<YOUR_REPOSITORY_URL>` with the actual Git repository URL.
+### Step 2: Configure PostgreSQL
 
-### 2. Configure PostgreSQL
+Create a PostgreSQL database:
 
-Create a database named `paymentpulse`.
+```sql
+CREATE DATABASE paymentpulse;
+```
 
-Configure `src/main/resources/application.properties` with your local database credentials:
+Configure your database credentials in `application.properties`.
+
+### Step 3: Start Kafka
+
+Start Docker Desktop and run your Kafka container.
+
+The application currently expects Kafka at:
 
 ```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/paymentpulse
-spring.datasource.username=postgres
-spring.datasource.password=${DB_PASSWORD}
-spring.datasource.driver-class-name=org.postgresql.Driver
-
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
+spring.kafka.bootstrap-servers=localhost:9092
 ```
 
-Set the `DB_PASSWORD` environment variable to your PostgreSQL password before starting the application. Do not commit real credentials to Git.
+The Kafka topic used by the application is:
 
-### 3. Build the project
+```text
+payment-transactions
+```
 
-On Windows PowerShell:
+### Step 4: Configure Spring Boot
+
+The application currently runs on port 8081.
+
+Relevant configuration:
+
+```properties
+server.port=8081
+
+spring.kafka.bootstrap-servers=localhost:9092
+
+spring.kafka.consumer.group-id=paymentpulse-group
+spring.kafka.consumer.auto-offset-reset=earliest
+```
+
+Configure your PostgreSQL connection and remaining Kafka serializer/deserializer properties before starting the application.
+
+### Step 5: Build the project
+
+Windows:
 
 ```powershell
-.\mvnw.cmd clean compile
+.\mvnw.cmd clean install
 ```
 
-### 4. Run automated tests
-
-```powershell
-.\mvnw.cmd test
-```
-
-The current unit-test suite contains 10 passing tests covering incident creation and updates, recovery behavior, RCA selection, and insufficient-data handling.
-
-### 5. Start the application
-
-Run `PaymentpulseApplication` from IntelliJ, or use:
+### Step 6: Run the application
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-The application should be available at `http://localhost:8080`, unless a different port is configured.
+The application will be available at:
 
-## Testing the Incident Lifecycle
-
-A typical manual test sequence is:
-
-1. Generate normal simulated transactions.
-2. Generate an incident on a selected gateway.
-3. Check rolling-window metrics.
-4. Evaluate the incident engine.
-5. Inspect the incident and RCA response.
-6. Retrieve RCA history.
-7. Stop incident simulation and generate normal traffic.
-8. Evaluate recovery until three consecutive healthy evaluations resolve the incident.
-
-Example:
-
-```http
-POST /api/simulator/generate?count=200
-POST /api/simulator/incident?gatewayId=G03&count=100
-POST /api/incidents/evaluate?windowMinutes=10&windows=6
-GET  /api/incidents
-GET  /api/incidents/INC-0001/rca-history
+```text
+http://localhost:8081
 ```
 
-Use the actual incident ID returned by the API. The simulator's timestamp behavior and rolling-window boundaries affect whether generated transactions contribute to current metrics.
+---
 
-## Roadmap
+## 9. Verifying Kafka Processing
 
-- [x] Transaction model, ingestion, and PostgreSQL persistence
-- [x] Aggregate and rolling-window metrics
-- [x] Historical reliability baselines
-- [x] Anomaly detection
-- [x] Gateway reliability analysis
-- [x] Incident lifecycle and automatic recovery
-- [x] Gateway-bank correlation and RCA evidence
-- [x] RCA snapshot persistence
-- [x] Initial automated unit-test suite
-- [ ] More comprehensive persistence and integration tests
-- [ ] Kafka event-driven transaction processing
-- [ ] Idempotent event consumption and retry handling
-- [ ] Prometheus metrics and Grafana dashboards
-- [ ] Docker-based local deployment
-- [ ] Load testing and reliability benchmarks
-- [ ] Intelligent routing and failover
-- [ ] Production deployment
+Generate 10 transactions:
 
-## Engineering Goals
+```http
+POST http://localhost:8081/api/simulator/generate?count=10
+```
 
-The longer-term goal is to evolve PaymentPulse into a distributed payment reliability platform that explores:
+Expected response:
 
-- Asynchronous transaction processing
-- Event-driven service architecture
-- Failure isolation and recovery
-- Time-window-based anomaly detection
-- Gateway reliability scoring
-- Evidence-based incident investigation
-- Operational metrics and observability
-- Throughput, latency, and fault-tolerance benchmarking
+```json
+{
+  "message": "Transaction generated successfully",
+  "generated": 10
+}
+```
 
-## Disclaimer
+Check the Kafka consumer group:
 
-PaymentPulse currently uses simulated payment transactions. Its reliability analysis and RCA outputs are intended for engineering experimentation and do not establish the actual cause of a real payment failure.
+```bash
+docker exec -it paymentpulse-kafka \
+/opt/kafka/bin/kafka-consumer-groups.sh \
+--bootstrap-server localhost:9092 \
+--describe \
+--group paymentpulse-group
+```
 
-## Author
+Inspect persisted transactions:
 
-Abhyuday Agnihotri
+```sql
+SELECT *
+FROM transactions
+ORDER BY id DESC
+LIMIT 10;
+```
+
+Inspect processed events:
+
+```sql
+SELECT *
+FROM processed_events
+ORDER BY processed_at DESC
+LIMIT 10;
+```
+
+Inspect the Dead Letter Topic:
+
+```bash
+docker exec -it paymentpulse-kafka \
+/opt/kafka/bin/kafka-console-consumer.sh \
+--bootstrap-server localhost:9092 \
+--topic payment-transactions-dlt \
+--from-beginning
+```
+
+---
+
+## 10. Current Implementation Status
+
+| Feature | Status |
+|---|---|
+| Transaction generation | Completed |
+| Gateway incident simulation | Completed |
+| PostgreSQL persistence | Completed |
+| Transaction metrics | Implemented |
+| Historical reliability baselines | Implemented |
+| Anomaly detection | Implemented |
+| Gateway reliability analysis | Implemented |
+| Incident management | Implemented |
+| Failure correlation and RCA evidence | Implemented |
+| Kafka producer | Completed |
+| Kafka consumer | Completed |
+| JSON event serialization | Completed |
+| Gateway-based partitioning | Completed |
+| Idempotent event processing | Completed |
+| Retry mechanism | Completed |
+| Dead Letter Topic | Tested |
+| Event-driven simulator integration | Completed |
+
+---
+
+## 11. Future Roadmap
+
+The next development milestones are:
+
+### Phase 1: Performance and Load Testing
+- Generate 1,000, 5,000, and 10,000 transaction workloads.
+- Measure transaction throughput.
+- Measure average and P95 processing latency.
+- Monitor Kafka consumer lag.
+- Evaluate database persistence performance.
+
+### Phase 2: Observability Infrastructure
+- Integrate Prometheus.
+- Build Grafana dashboards.
+- Monitor Kafka producer and consumer metrics.
+- Track transaction processing performance.
+- Monitor application health.
+
+### Phase 3: Distributed Reliability Improvements
+- Improve failure detection.
+- Add intelligent payment gateway routing.
+- Introduce automated recovery and failover.
+- Improve incident correlation and root cause analysis.
+
+### Phase 4: Deployment and Documentation
+- Dockerize the application.
+- Develop a complete deployment setup.
+- Add architecture and performance documentation.
+- Conduct load and failure testing.
+
+---
+
+## 12. Project Objective
+
+PaymentPulse aims to demonstrate practical understanding of backend engineering and distributed systems through a simulated payment processing environment.
+
+The primary engineering focus areas are:
+
+- Event-driven architecture.
+- Distributed messaging.
+- Idempotent processing.
+- Failure handling and recovery.
+- Transaction reliability.
+- Performance monitoring.
+- Observability and incident management.
+
+**PaymentPulse — Building reliability into distributed payment systems.**
